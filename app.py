@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd # Nécessaire pour la carte
 import time
 import os
 
@@ -10,22 +11,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS CUSTOM (CORRIGÉ POUR FORCER LE FOND BLANC) ---
+# --- CSS CUSTOM ---
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* --- 1. FORCE LE FOND BLANC (Fixe le problème de contraste) --- */
-    .stApp {
-        background-color: white;
-        color: black;
-    }
-    [data-testid="stHeader"] {
-        background-color: white;
-    }
+    /* FORCE LE FOND BLANC */
+    .stApp { background-color: white; color: black; }
+    [data-testid="stHeader"] { background-color: white; }
     
-    /* --- 2. STYLE DES BOUTONS --- */
+    /* BOUTONS */
     .stButton>button {
         width: 100%;
         border-radius: 20px;
@@ -40,9 +36,9 @@ st.markdown("""
          transform: scale(1.01);
     }
     
-    /* --- 3. STYLE DES CARTES --- */
+    /* CARTES */
     div[data-testid="stVerticalBlock"] > div > div[data-testid="stVerticalBlock"] {
-        background-color: #F8F9FA; /* Gris très clair pour détacher du fond blanc */
+        background-color: #F8F9FA;
         border-radius: 15px;
         padding: 15px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
@@ -50,22 +46,15 @@ st.markdown("""
         border: 1px solid #eee;
     }
 
-    /* --- 4. TEXTE --- */
-    h1, h2, h3, p, span, div, small, label {
-        color: #333333 !important;
-    }
-    /* Exception pour le texte dans les boutons (blanc) */
-    button div { color: white !important; }
-    button p { color: white !important; }
+    /* TEXTE NOIR */
+    h1, h2, h3, p, span, div, small, label { color: #333333 !important; }
+    button div, button p { color: white !important; }
     
     .accent-text { color: #417DAB !important; font-weight: bold; }
     .student-tag { color: #666 !important; font-size: 0.85rem; }
     
-    /* Force la couleur du champ de recherche */
-    input {
-        color: black !important;
-        background-color: #f0f2f6 !important;
-    }
+    /* INPUTS */
+    input { color: black !important; background-color: #f0f2f6 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,74 +63,65 @@ if 'contacts_pris' not in st.session_state:
     st.session_state.contacts_pris = []
 if 'page' not in st.session_state:
     st.session_state.page = "Accueil"
+if 'geo_active' not in st.session_state:
+    st.session_state.geo_active = False
 
-# --- DONNÉES ---
+# --- DONNÉES AVEC COORDONNÉES GPS ---
+# J'ai séparé le lieu (texte) de la distance (chiffre) et ajouté lat/lon
 articles = [
     {
-        "id": 1, 
-        "type": "objet", 
-        "titre": "Micro-ondes (Bon état)", 
-        "echange_contre": "Aide révisions partiels Maths L1", 
+        "id": 1, "type": "objet", "titre": "Micro-ondes (Bon état)", 
+        "echange_contre": "Aide révisions Maths L1", 
         "img": "https://img.icons8.com/color/96/microwave.png", 
-        "dist": "Résidence A", 
+        "lieu": "Résidence A", "distance": "200m", 
+        "lat": 48.8566, "lon": 2.3522, # Coordonnées fictives (Paris)
         "student": "Sophie L."
     },
     {
-        "id": 4, 
-        "type": "objet", 
-        "titre": "Kit Vaisselle complet", 
-        "echange_contre": "Relecture rapport de stage", 
+        "id": 4, "type": "objet", "titre": "Kit Vaisselle complet", 
+        "echange_contre": "Relecture rapport stage", 
         "img": "https://img.icons8.com/color/96/kitchen.png", 
-        "dist": "1.2km", 
+        "lieu": "Rue des étudiants", "distance": "1.2km", 
+        "lat": 48.8600, "lon": 2.3400,
         "student": "Karim B."
     },
     {
-        "id": 2, 
-        "type": "tutorat", 
-        "titre": "Tutorat Anglais (Niveau C1)", 
-        "detail": "Dispo pour préparer les oraux.", 
+        "id": 2, "type": "tutorat", "titre": "Tutorat Anglais (C1)", 
+        "detail": "Dispo pour oraux.", 
         "img": "https://img.icons8.com/color/96/learning.png", 
-        "dist": "Campus Central", 
+        "lieu": "Campus Central", "distance": "500m", 
+        "lat": 48.8584, "lon": 2.3488,
         "student": "Thomas W."
     },
     {
-        "id": 3, 
-        "type": "tutorat", 
-        "titre": "Aide Programmation Python", 
-        "detail": "Je débloque vos projets débutants.", 
+        "id": 3, "type": "tutorat", "titre": "Aide Python", 
+        "detail": "Je débloque vos projets.", 
         "img": "https://img.icons8.com/dusk/96/python.png", 
-        "dist": "Biblio B.U.", 
+        "lieu": "Biblio B.U.", "distance": "50m", 
+        "lat": 48.8550, "lon": 2.3500,
         "student": "Amina D."
     },
 ]
 
 # --- FONCTIONS ---
 def simuler_contact(nom_etudiant, titre_annonce):
-    with st.spinner(f"Envoi du message à {nom_etudiant}..."):
-        time.sleep(0.8)
+    with st.spinner(f"Envoi..."):
+        time.sleep(0.5)
     st.toast(f"✅ Demande envoyée à {nom_etudiant} !", icon="💬")
     st.session_state.contacts_pris.append(f"Contacté {nom_etudiant} pour : {titre_annonce}")
     time.sleep(0.5)
     st.rerun()
 
-# --- HEADER & MENU ---
+# --- HEADER ---
 col_logo, col_titre = st.columns([1, 4])
-
 with col_logo:
-    # Affiche le logo s'il existe
-    if os.path.exists("logo.jpg"):
-        st.image("logo.jpg", width=80) 
-    elif os.path.exists("logo.png"):
-        st.image("logo.png", width=80)
-    else:
-        st.write("🎓") 
-
+    if os.path.exists("logo.jpg"): st.image("logo.jpg", width=80) 
+    elif os.path.exists("logo.png"): st.image("logo.png", width=80)
+    else: st.write("🎓") 
 with col_titre:
-    # Titre aligné avec le logo
     st.markdown("<h1 style='text-align: left; padding-top: 10px; font-size: 2rem;'>Campused Up</h1>", unsafe_allow_html=True)
 
 st.write("") 
-
 c1, c2 = st.columns(2)
 if c1.button("🏠 Fil d'actu"): st.session_state.page = "Accueil"
 if c2.button("💬 Mes Messages"): st.session_state.page = "Messages"
@@ -150,10 +130,25 @@ st.divider()
 
 # --- PAGE ACCUEIL ---
 if st.session_state.page == "Accueil":
-    st.markdown("<div style='text-align:center; margin-bottom:15px; color:#666;'>📍 Géolocalisation active</div>", unsafe_allow_html=True)
+    
+    # CASE RGPD
+    st.session_state.geo_active = st.checkbox("📍 Activer la carte & distances précises", value=st.session_state.geo_active)
+    
+    # --- CARTE INTERACTIVE (S'affiche seulement si coché) ---
+    if st.session_state.geo_active:
+        st.success("✅ Mode proximité activé.")
+        # Création d'un tableau de données pour la carte
+        df_map = pd.DataFrame(articles)
+        # Affichage de la carte
+        st.map(df_map, latitude='lat', longitude='lon', size=20, color='#9F2B2B', zoom=13)
+        st.write("") # Espace
+    else:
+        st.info("ℹ️ Localisation approximative uniquement (Confidentialité).")
+    
     st.text_input("🔍 Rechercher...", placeholder="Ex: Soutien compta...")
     st.write("")
 
+    # BOUCLE D'AFFICHAGE DES CARTES
     for item in articles:
         with st.container():
             col_img, col_txt = st.columns([1, 3])
@@ -167,7 +162,16 @@ if st.session_state.page == "Accueil":
                     st.markdown(f"<h3 style='margin:0; font-size:1.2rem;'>🎓 {item['titre']}</h3>", unsafe_allow_html=True)
                     st.markdown(f"<p style='margin:5px 0;'>{item['detail']}</p>", unsafe_allow_html=True)
 
-                st.markdown(f"<p class='student-tag'>👤 {item['student']} • 📍 {item['dist']}</p>", unsafe_allow_html=True)
+                # --- LOGIQUE D'AFFICHAGE LIEU / DISTANCE ---
+                if st.session_state.geo_active:
+                    # Cas 1 : Geo Active -> Lieu + Distance colorée
+                    info_loc = f"📍 {item['lieu']} • <b style='color:#E91E63'>{item['distance']}</b>"
+                else:
+                    # Cas 2 : Geo Désactivée -> Lieu uniquement (Pas de distance)
+                    info_loc = f"📍 {item['lieu']}"
+                
+                # Affichage de la ligne localisation
+                st.markdown(f"<p class='student-tag'>👤 {item['student']} • {info_loc}</p>", unsafe_allow_html=True)
                 
                 prenom = item['student'].split()[0]
                 if st.button(f"💬 Contacter {prenom}", key=f"btn_{item['id']}"):
